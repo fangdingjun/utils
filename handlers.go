@@ -32,6 +32,7 @@ func (w *loggingWriter) WriteHeader(statusCode int) {
 	w.w.WriteHeader(statusCode)
 }
 
+// Write implements http.ResponseWriter.
 func (w *loggingWriter) Write(buf []byte) (int, error) {
 	if !w.statusWrote {
 		w.WriteHeader(200)
@@ -42,6 +43,7 @@ func (w *loggingWriter) Write(buf []byte) (int, error) {
 
 var _ http.ResponseWriter = &loggingWriter{}
 
+// LoggingHandler is http server middleware to log http request
 func LoggingHandler(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		writer := &loggingWriter{w: w}
@@ -58,6 +60,7 @@ func LoggingHandler(next http.Handler) http.Handler {
 	})
 }
 
+// RecoveryHandler is http server middleware to recover from panic and log the call stack
 func RecoveryHandler(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
@@ -70,6 +73,7 @@ func RecoveryHandler(next http.Handler) http.Handler {
 	})
 }
 
+// AllowMethods is http server middleware to limit http request methods
 func AllowMethods(methods []string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
