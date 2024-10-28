@@ -98,9 +98,12 @@ func AllowMethods(methods []string) func(http.Handler) http.Handler {
 	}
 }
 
+// FileUploadConfig config the file upload handler
 type FileUploadConfig struct {
-	AllowExts    []string
-	StoragePath  string
+	AllowExts   []string // allowed file to upload, example  .jpg, .png
+	StoragePath string   // path to store the uploaded file
+
+	// ResponseFunc a function to write the response to user
 	ResponseFunc func(w http.ResponseWriter, filenames []string, err error)
 }
 
