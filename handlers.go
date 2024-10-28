@@ -1,8 +1,13 @@
 package utils
 
 import (
+	"crypto/sha256"
 	"fmt"
+	"io"
+	"mime/multipart"
 	"net/http"
+	"os"
+	"path/filepath"
 	"runtime/debug"
 	"strings"
 	"time"
@@ -91,4 +96,123 @@ func AllowMethods(methods []string) func(http.Handler) http.Handler {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		})
 	}
+}
+
+type FileUploadConfig struct {
+	AllowExts    []string
+	StoragePath  string
+	ResponseFunc func(w http.ResponseWriter, filenames []string, err error)
+}
+
+func storeFile(hdr *multipart.FileHeader, cfg *FileUploadConfig) (string, error) {
+	fp, err := hdr.Open()
+	if err != nil {
+		log.Errorln(err)
+		return "", err
+	}
+	defer fp.Close()
+
+	fpTmp, err := os.CreateTemp("", "tmp-upload-")
+	if err != nil {
+		log.Errorln(err)
+		return "", err
+	}
+	tmpname := fpTmp.Name()
+
+	defer func() {
+		fpTmp.Close()
+		os.Remove(tmpname)
+	}()
+
+	h := sha256.New()
+	buf := make([]byte, 4096)
+
+	for {
+		n, err := fp.Read(buf)
+		if err != nil {
+			if err != io.EOF {
+				log.Errorln(err)
+				return "", err
+			}
+			break
+		}
+		_, err = fpTmp.Write(buf[:n])
+		if err != nil {
+			log.Errorln(err)
+			return "", err
+		}
+		h.Write(buf[:n])
+	}
+
+	_dstName := fmt.Sprintf("upload_%x%s", h.Sum(nil), filepath.Ext(hdr.Filename))
+	name := filepath.Join(cfg.StoragePath, _dstName)
+	if _, err = os.Stat(name); err == nil {
+		// file exists, ignore
+		return name, nil
+	}
+
+	fp1, err := os.Create(name)
+	if err != nil {
+		log.Errorln(err)
+		return "", err
+	}
+	defer fp1.Close()
+
+	fpTmp.Seek(0, io.SeekStart)
+	io.Copy(fp1, fpTmp)
+
+	return name, nil
+}
+
+// FileUploadHandler is http handler to handler file upload
+func FileUploadHandler(cfg FileUploadConfig) http.Handler {
+	if cfg.ResponseFunc == nil {
+		cfg.ResponseFunc = func(w http.ResponseWriter, a []string, err error) {
+			if err != nil {
+				http.Error(w, "", http.StatusInternalServerError)
+				return
+			}
+			w.WriteHeader(200)
+		}
+	}
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		err := r.ParseMultipartForm(10 * 1024 * 1024)
+		if err != nil {
+			log.Errorln(err)
+			cfg.ResponseFunc(w, nil, err)
+			return
+		}
+
+		names := []string{}
+		for name, hdrs := range r.MultipartForm.File {
+			log.Debugf("name %s", name)
+			for _, hdr := range hdrs {
+				log.Debugf("filename %s", hdr.Filename)
+
+				if len(cfg.AllowExts) > 0 {
+					allow := false
+					ext := filepath.Ext(hdr.Filename)
+					for _, ext1 := range cfg.AllowExts {
+						if ext1 == ext {
+							allow = true
+						}
+					}
+					if !allow {
+						cfg.ResponseFunc(w, nil, fmt.Errorf("upload %s is not allowed", ext))
+						return
+					}
+				}
+
+				name, err := storeFile(hdr, &cfg)
+				if err != nil {
+					cfg.ResponseFunc(w, nil, err)
+					return
+				}
+				names = append(names, name)
+			}
+		}
+		cfg.ResponseFunc(w, names, nil)
+		return
+	})
 }
