@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	log "github.com/fangdingjun/go-log/v5"
+	log "github.com/fangdingjun/go-log"
 )
 
 type loggingWriter struct {

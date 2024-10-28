@@ -10,7 +10,7 @@ import (
 	"os"
 	"testing"
 
-	log "github.com/fangdingjun/go-log/v5"
+	log "github.com/fangdingjun/go-log"
 )
 
 func TestUploadFile(t *testing.T) {
